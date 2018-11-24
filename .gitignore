@@ -1,4 +1,5 @@
 
 .vscode/
+.idea/
 
 eclipse-formatter.xml
