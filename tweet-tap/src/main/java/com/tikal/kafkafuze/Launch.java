@@ -1,6 +1,8 @@
 package com.tikal.kafkafuze;
 
+import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import com.google.common.collect.Lists;
@@ -12,6 +14,10 @@ import com.twitter.hbc.core.processor.StringDelimitedProcessor;
 import com.twitter.hbc.httpclient.auth.Authentication;
 import com.twitter.hbc.httpclient.auth.OAuth1;
 
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,10 +27,7 @@ public class Launch {
 
     public static void main(String[] args) {
 
-// logger
-        // System.setProperty(org.slf4j.impl., "TRACE");
-
-        System.out.print("Hi what's up?");
+        logger.info("setting up tweet-tap");
 
         String consumerKey = "e8kDdf6ac97M4KqlaSoCKKBf4";
         String consumerSecret = "sGLu4NAOHNZjGt7NCf21Iz8xGtB4ejkS0IQWmWblq5uKLRGoWy";
@@ -34,14 +37,19 @@ public class Launch {
         try {
             run(consumerKey, consumerSecret, token, secret);
 
-        } catch (InterruptedException e) {
-            logger.error("fatal error while consuming tweets", e);
-            // e.printStackTrace();
+        } catch (Exception e) {
+            logger.error("fatal: error while consuming tweets", e);
         }
     }
 
-    public static void run(String consumerKey, String consumerSecret, String token, String secret)
-            throws InterruptedException {
+    public static void run(String consumerKey, String consumerSecret, String token, String secret) throws Exception {
+
+        Properties props = new Properties();
+        
+        props.put("bootstrap.servers", "127.0.0.1:29092");
+        // props.put("transactional.id", "my-transactional-id");
+
+        Producer<String, String> producer = new KafkaProducer<>(props, new StringSerializer(), new StringSerializer());
 
         BlockingQueue<String> queue = new LinkedBlockingQueue<String>(10000);
         StatusesFilterEndpoint endpoint = new StatusesFilterEndpoint();
@@ -66,12 +74,14 @@ public class Launch {
 
         try {
             // Do whatever needs to be done with messages
-            while (true) {
+             while (true) {
                 String msg = queue.take();
-                logger.info("message arrived: {}", msg);
-            }
+                logger.info("message arrived");
+                producer.send(new ProducerRecord<>("tweets", msg)).get();
+             }
         } finally {
             client.stop();
+            producer.close();
         }
     }
 }
