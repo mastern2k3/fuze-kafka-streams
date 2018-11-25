@@ -5,13 +5,12 @@ import java.util.HashMap;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@RestController
-public class HomeController  {
+@RestController()
+@RequestMapping("/api/metrics")
+public class HomeController {
 
-    private static final String template = "Hello, %s!";
-
-    @RequestMapping("/")
-    public HashMap getHomeRoutes() {
+    @RequestMapping("")
+    public HashMap<String, String> getHomeRoutes() {
 
         HashMap<String, String> homeRoutes = new HashMap<String, String>();
         

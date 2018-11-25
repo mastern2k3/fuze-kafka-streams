@@ -2,7 +2,6 @@ package com.tikal.kafkafuze;
 
 import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import com.google.common.collect.Lists;
