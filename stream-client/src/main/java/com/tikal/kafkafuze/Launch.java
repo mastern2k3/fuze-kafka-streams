@@ -1,22 +1,28 @@
 package com.tikal.kafkafuze;
 
+import java.io.IOException;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Properties;
+import java.util.regex.Pattern;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
-import org.apache.kafka.streams.kstream.Produced;
+import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.kstream.TimeWindows;
+import org.apache.kafka.streams.kstream.Windowed;
+import org.apache.kafka.streams.state.WindowStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.Properties;
-import java.util.regex.Pattern;
 
 public class Launch {
 
@@ -77,10 +83,11 @@ public class Launch {
 
         final Pattern pattern = Pattern.compile("\\W+", Pattern.UNICODE_CHARACTER_CLASS);
 
-        final KTable<String, Long> wordCounts = textLines
+        final KTable<Windowed<String>, Long> wordCounts = textLines
                 // Split each text line, by whitespace, into words.  The text lines are the record
                 // values, i.e. we can ignore whatever data is in the record keys and thus invoke
                 // `flatMapValues()` instead of the more generic `flatMap()`.
+                // .map((k, v) -> new KeyValue(k, v))
                 .mapValues(Launch::tryExtract)
                 .flatMapValues(value -> Arrays.asList(pattern.split(value.toLowerCase())))
                 // Count the occurrences of each word (record key).
@@ -91,10 +98,19 @@ public class Launch {
                 //
                 // Note: no need to specify explicit serdes because the resulting key and value types match our default serde settings
                 .groupBy((key, word) -> word)
-                .count();
+                .windowedBy(TimeWindows.of(Duration.ofMinutes(5)))
+                .count(
+                    Materialized.<String, Long, WindowStore<Bytes, byte[]>>as("somestore")
+                        .withKeySerde(Serdes.String())
+                        .withValueSerde(Serdes.Long()));
 
         // Write the `KTable<String, Long>` to the output topic.
-        wordCounts.toStream().to("tweet-wordcount-output", Produced.with(stringSerde, longSerde));
+        wordCounts.toStream().foreach((key, value) -> {
+            logger.info("{}: {}", key.key(), value);
+        });
+        
+        // wordCounts.map((key, value) -> new KeyValue<>(key.key() + "@" + key.window().start() + "->" + key.window().end(), value))
+        //     .to("somestore", Produced.with(stringSerde, longSerde));
 
         // Now that we have finished the definition of the processing topology we can actually run
         // it via `start()`.  The Streams application as a whole can be launched just like any
