@@ -2,8 +2,11 @@ package com.tikal.kafkafuze;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -13,11 +16,13 @@ import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.kstream.Produced;
 import org.apache.kafka.streams.kstream.TimeWindows;
 import org.apache.kafka.streams.kstream.Windowed;
 import org.apache.kafka.streams.state.WindowStore;
@@ -26,19 +31,34 @@ import org.slf4j.LoggerFactory;
 
 public class Launch {
 
-    private static Logger logger = LoggerFactory.getLogger(Launch.class);
+    private static final Logger logger = LoggerFactory.getLogger(Launch.class);
+    private static final ObjectMapper mapper = new ObjectMapper();
+    private static final Pattern pattern =
+        Pattern.compile("([\\u20a0-\\u32ff\\ud83c\\udc00-\\ud83d\\udeff\\udbb9\\udce5-\\udbb9\\udcee])");
 
-    private static ObjectMapper mapper = new ObjectMapper();
-
-    public static String tryExtract(String value) {
+    public static List<String> tryExtract(String value) {
         try {
             JsonNode root = mapper.readTree(value);
 
-            return root.at("/text").asText("");
+            String text = root.at("/text").asText("");
+
+            if (text.equals("")) {
+                return Arrays.asList();
+            }
+
+            List<String> allMatches = new ArrayList<String>();
+
+            Matcher matcher = pattern.matcher(text);
+    
+            while (matcher.find()) {
+                allMatches.add(matcher.group());
+            }
+    
+            return allMatches;
 
         } catch (IOException e) {
             e.printStackTrace();
-            return "";
+            return Arrays.asList();
         }
     }
 
@@ -81,15 +101,14 @@ public class Launch {
         // call to `stream()` below in order to show how that's done, too.
         final KStream<String, String> textLines = builder.stream("tweets");
 
-        final Pattern pattern = Pattern.compile("\\W+", Pattern.UNICODE_CHARACTER_CLASS);
-
         final KTable<Windowed<String>, Long> wordCounts = textLines
                 // Split each text line, by whitespace, into words.  The text lines are the record
                 // values, i.e. we can ignore whatever data is in the record keys and thus invoke
                 // `flatMapValues()` instead of the more generic `flatMap()`.
                 // .map((k, v) -> new KeyValue(k, v))
-                .mapValues(Launch::tryExtract)
-                .flatMapValues(value -> Arrays.asList(pattern.split(value.toLowerCase())))
+                // .mapValues()
+                // .flatMapValues(value -> Arrays.asList(pattern.split(value.toLowerCase())))
+                .flatMapValues(Launch::tryExtract)
                 // Count the occurrences of each word (record key).
                 //
                 // This will change the stream type from `KStream<String, String>` to `KTable<String, Long>`
@@ -99,18 +118,20 @@ public class Launch {
                 // Note: no need to specify explicit serdes because the resulting key and value types match our default serde settings
                 .groupBy((key, word) -> word)
                 .windowedBy(TimeWindows.of(Duration.ofMinutes(5)))
+                // .count();
                 .count(
                     Materialized.<String, Long, WindowStore<Bytes, byte[]>>as("somestore")
                         .withKeySerde(Serdes.String())
                         .withValueSerde(Serdes.Long()));
 
         // Write the `KTable<String, Long>` to the output topic.
-        wordCounts.toStream().foreach((key, value) -> {
-            logger.info("{}: {}", key.key(), value);
-        });
+        // wordCounts.toStream().foreach((key, value) -> {
+        //     logger.info("{}: {}", key.key(), value);
+        // });
         
-        // wordCounts.map((key, value) -> new KeyValue<>(key.key() + "@" + key.window().start() + "->" + key.window().end(), value))
-        //     .to("somestore", Produced.with(stringSerde, longSerde));
+        wordCounts.toStream()
+            .map((key, value) -> new KeyValue<>(key.key() + "@" + key.window().start() + "->" + key.window().end(), value))
+            .to("somestore", Produced.with(stringSerde, longSerde));
 
         // Now that we have finished the definition of the processing topology we can actually run
         // it via `start()`.  The Streams application as a whole can be launched just like any

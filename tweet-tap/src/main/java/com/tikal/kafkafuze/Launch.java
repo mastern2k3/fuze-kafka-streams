@@ -54,7 +54,7 @@ public class Launch {
         StatusesFilterEndpoint endpoint = new StatusesFilterEndpoint();
 
         // add some track terms
-        endpoint.trackTerms(Lists.newArrayList("color"));
+        endpoint.trackTerms(Lists.newArrayList("color", "feel", "Lion King"));
 
         Authentication auth = new OAuth1(consumerKey, consumerSecret, token, secret);
         // Authentication auth = new BasicAuth(username, password);

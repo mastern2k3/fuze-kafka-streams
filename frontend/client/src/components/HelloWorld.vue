@@ -11,13 +11,15 @@ import axios from 'axios'
 export default {
   name: 'HelloWorld',
   created () {
-    axios.get('/api/metrics')
-      .then(res => {
-        this.msg = res.data
-      })
-      .catch(err => {
-        this.msg = err
-      })
+    setInterval(() => {
+      axios.get('/api/metrics')
+        .then(res => {
+          this.msg = res.data
+        })
+        .catch(err => {
+          this.msg = err
+        })
+    }, 1000)
   },
   data () {
     return {
