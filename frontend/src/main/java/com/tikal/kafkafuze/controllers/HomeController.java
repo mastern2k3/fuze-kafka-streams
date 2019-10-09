@@ -153,6 +153,8 @@ public class HomeController {
                 // Note: no need to specify explicit serdes because the resulting key and value types match our default serde settings
                 .groupBy((key, word) -> word)
                 .windowedBy(TimeWindows.of(Duration.ofMinutes(100)))
+                .re
+                
                 // .count();
                 .count();
                     // Materialized.<String, Long, WindowStore<Bytes, byte[]>>as("somestore")
